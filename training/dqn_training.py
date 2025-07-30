@@ -146,7 +146,7 @@ class DQNTrainingManager:
         
         # Stop training when reward threshold is reached
         reward_threshold_callback = StopTrainingOnRewardThreshold(
-            reward_threshold=50.0,  # Adjust based on environment
+            reward_threshold=None,  # Adjust based on environment
             verbose=1
         )
 

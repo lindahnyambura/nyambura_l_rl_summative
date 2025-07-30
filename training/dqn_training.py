@@ -143,12 +143,6 @@ class DQNTrainingManager:
     def create_callbacks(self, eval_env, model_name: str, 
                         total_timesteps: int) -> CallbackList:
         """Create training callbacks for monitoring and checkpointing"""
-        
-        # Stop training when reward threshold is reached
-        reward_threshold_callback = StopTrainingOnRewardThreshold(
-            reward_threshold=None,  # Adjust based on environment
-            verbose=1
-        )
 
         # Evaluation callback
         eval_callback = EvalCallback(
@@ -159,8 +153,7 @@ class DQNTrainingManager:
             deterministic=True,
             render=False,
             n_eval_episodes=10,
-            verbose=1,
-            callback_on_new_best=reward_threshold_callback
+            verbose=1
         )
         
         # Checkpoint callback

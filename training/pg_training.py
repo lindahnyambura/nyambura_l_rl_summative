@@ -24,7 +24,7 @@ gym.register(
 
 # 1.  Choose algorithm (PPO, A2C, REINFORCE)
 
-ALGO = "A2C"          # <--- change to "A2C" or "REINFORCE" (REINFORCE = A2C w/o baseline)
+ALGO = "REINFORCE"          # <--- change to "A2C" or "REINFORCE" (REINFORCE = A2C w/o baseline)
 POLICY_TYPE = "MlpPolicy"
 
 # 2.  Hyper-parameter grids

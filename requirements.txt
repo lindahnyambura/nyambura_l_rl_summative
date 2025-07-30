@@ -1,0 +1,20 @@
+# Core RL and Environment
+gymnasium>=0.29.1  
+stable-baselines3>=2.1.0
+torch>=2.0.0
+
+# Visualization 
+pygame>=2.5.2
+PyOpenGL>=3.1.7
+PyOpenGL-accelerate>=3.1.7
+
+# Data and utilities
+numpy>=1.24.0
+matplotlib>=3.7.0
+imageio>=2.31.1
+imageio[ffmpeg]
+pillow>=10.0.0
+
+# Development
+jupyter>=1.0.0
+tensorboard>=2.13.0

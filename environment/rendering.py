@@ -7,6 +7,7 @@ import numpy as np
 import math
 from typing import List, Tuple, Optional
 import random
+from OpenGL.GL import glReadPixels, GL_RGBA, GL_UNSIGNED_BYTE
 
 class NairobiCBD3DRenderer:
     """
@@ -659,6 +660,14 @@ class NairobiCBD3DRenderer:
                 elif event.key == pygame.K_MINUS:
                     self.zoom *= 1.1
         return True
+    
+    def capture_frame(self):
+        """Capture the current OpenGL framebuffer as a numpy RGB image"""
+        width, height = self.width, self.height
+        data = glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE)
+        image = np.frombuffer(data, dtype=np.uint8).reshape((height, width, 4))
+        image = np.flipud(image)  # Flip vertically to match OpenGL's bottom-left origin
+        return image[:, :, :3]  # Return RGB only, discard alpha channel
         
     def close(self):
         """Clean up resources"""

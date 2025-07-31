@@ -84,6 +84,11 @@ class NairobiCBDProtestEnv(gym.Env):
         self.last_direction = np.array([1.0, 0.0])  # For sprint action
         self.steps_since_strategy_shift = 0
         
+        # initialize visited map
+        self.visited_map = np.zeros((self.grid_width, self.grid_height))
+        
+        self.start_pos = None # Initial agent position
+
         # Colors for rendering
         self.colors = {
             'background': (50, 50, 50),
@@ -445,7 +450,7 @@ class NairobiCBDProtestEnv(gym.Env):
         
         return observation
     
-    def _calculate_reward(self, action: int) -> Tuple[float, bool]:
+    def _calculate_reward(self, action: int, old_pos: np.ndarray) -> Tuple[float, bool]:
         """Calculate reward and check if episode is done"""
         reward = 0.0
         done = False
@@ -469,29 +474,53 @@ class NairobiCBDProtestEnv(gym.Env):
         # Safe zone bonus
         if self._is_in_safe_zone(self.agent_pos[0], self.agent_pos[1]):
             reward += 2.0
+
+        # Exit reached
+        for exit_point in self.exit_points:
+            if np.linalg.norm(self.agent_pos - np.array(exit_point)) < 3.0:
+                reward += 10.0
+                done = True
+                return reward, done
         
         # Check if caught by police
         for police in self.police_units:
-            distance = math.sqrt((self.agent_pos[0] - police.x)**2 + 
-                               (self.agent_pos[1] - police.y)**2)
-            if distance < 2.0:  # Caught
-                reward -= 50.0
+            if np.linalg.norm(self.agent_pos - np.array([police.x, police.y])) < 2.0:
+                reward -= 50
                 done = True
-                break
-        
-        # Check if reached exit point
-        for exit_point in self.exit_points:
-            distance = math.sqrt((self.agent_pos[0] - exit_point[0])**2 + 
-                               (self.agent_pos[1] - exit_point[1])**2)
-            if distance < 3.0:
-                reward += 10.0
-                done = True
-                break
+                return reward, done
         
         # Episode timeout
         if self.current_step >= self.max_episode_steps:
             done = True
+            return reward, done
         
+        # Encourage exploration
+        cell_x, cell_y = int(self.agent_pos[0]), int(self.agent_pos[1])
+        if self.visited_map[cell_x, cell_y] == 0:
+            reward += 1.0
+        else:
+            reward += 0.1 / (1 + self.visited_map[cell_x, cell_y])
+        self.visited_map[cell_x, cell_y] += 1
+        
+        # encourage movement away from spawn
+        dist_from_start = np.linalg.norm(self.agent_pos - self.start_pos)
+        reward += 0.3 * (dist_from_start / max(self.grid_width, self.grid_height))
+
+        # penalize no movement
+        if np.allclose(self.agent_pos, old_pos):
+            reward -= 2.0
+
+        # edge hugging penalty
+        edge_threshold = 5.0
+        edge_dist = min(
+            self.agent_pos[0], self.agent_pos[1],
+            self.grid_width - self.agent_pos[0],
+            self.grid_height - self.agent_pos[1]
+        )
+        if edge_dist < edge_threshold:
+            reward -= (edge_threshold - edge_dist) * 0.5
+
+
         return reward, done
     
     def reset(self, seed: Optional[int] = None, options: Optional[dict] = None):
@@ -509,7 +538,13 @@ class NairobiCBDProtestEnv(gym.Env):
         # Reset counters
         self.current_step = 0
         self.steps_since_strategy_shift = 0
+
+        # Reset visited map
+        self.visited_map.fill(0.0)
         
+        # # Reset start position
+        self.start_pos = self.agent_pos.copy()
+
         # Respawn dynamic elements
         self._spawn_police_units()
         self.tear_gas_clouds.clear()
@@ -525,8 +560,7 @@ class NairobiCBDProtestEnv(gym.Env):
         """Execute one step in the environment"""
         self.current_step += 1
         self.steps_since_strategy_shift += 1
-        
-        # Execute action
+
         old_pos = self.agent_pos.copy()
         
         if action == 0:  # Move North
@@ -561,9 +595,9 @@ class NairobiCBDProtestEnv(gym.Env):
         self._update_police_units()
         self._update_hazards()
         self._update_crowd_density()
-        
+
         # Calculate reward and check termination
-        reward, done = self._calculate_reward(action)
+        reward, done = self._calculate_reward(action, old_pos)
         
         observation = self._get_observation()
         info = {

@@ -16,6 +16,8 @@ from pathlib import Path
 import time
 import imageio
 from OpenGL.GL import glReadPixels, GL_RGBA, GL_UNSIGNED_BYTE
+import gymnasium as gym
+from stable_baselines3 import PPO, A2C, DQN
 
 # Add project directories to path
 sys.path.append(os.path.join(os.path.dirname(__file__), 'environment'))
@@ -23,6 +25,43 @@ sys.path.append(os.path.join(os.path.dirname(__file__), 'training'))
 
 from environment.custom_env import NairobiCBDProtestEnv
 from environment.rendering import NairobiCBD3DRenderer, create_demo_visualization
+
+# map algorithms to their respective model classes and default paths
+ALGO_MAP = {
+    "dqn":   (DQN,   "models/dqn/best_model.zip"),
+    "ppo":   (PPO,   "models/ppo/best_model.zip"),
+    "a2c":   (A2C,   "models/a2c/best_model.zip"),
+    "reinf": (A2C,   "models/reinforce/best_model.zip"),
+}
+
+# render trained policy
+def render_trained_model(algo: str, n_episodes: int = 3, fps: int = 8):
+    """Record 3 short episodes of the trained agent."""
+    if algo not in ALGO_MAP:
+        raise ValueError(f"Unknown algo '{algo}'. Choose from {list(ALGO_MAP.keys())}")
+
+    Model, model_path = ALGO_MAP[algo]
+    if not Path(model_path).exists():
+        raise FileNotFoundError(f"Model not found: {model_path}")
+
+    model = Model.load(model_path)
+    env = gym.make("NairobiProtestEnv-v0", render_mode="rgb_array")
+    frames = []
+
+    for ep in range(n_episodes):
+        obs, _ = env.reset(seed=ep)
+        done = False
+        while not done:
+            action, _ = model.predict(obs, deterministic=True)
+            obs, reward, terminated, truncated, info = env.step(action)
+            frames.append(env.render())
+            done = terminated or truncated
+
+    env.close()
+    outfile = Path("report") / f"{algo}_demo_3d.mp4"
+    outfile.parent.mkdir(exist_ok=True)
+    imageio.mimsave(str(outfile), frames, fps=fps)
+    print(f"Video saved → {outfile}")
 
 def capture_opengl_frame(width, height):
     # Read pixels from OpenGL framebuffer
@@ -111,7 +150,11 @@ def create_random_agent_demo(duration: int = 60, save_gif: bool = True, use_3d: 
                     'grid_width': env.grid_width,
                     'grid_height': env.grid_height
                 }
+                frames = []
                 renderer.render_scene(env_state)
+
+                if save_gif:
+                    frames.append(renderer.capture_frame())
                 
                 # Capture frame for GIF
                 if save_gif and step_count % 3 == 0:  # Every 3rd frame to reduce size
@@ -219,12 +262,14 @@ def main():
         help="Run random agent demonstration"
     )
     parser.add_argument(
-        "--test", action="store_true", 
-        help="Test environment functionality"
+        "--render-trained", choices=list(ALGO_MAP.keys()), 
+        help="Render trained model (algo)"
     )
     parser.add_argument(
-        "--3d", dest="use_3d", action="store_true",
-        help="Use 3D visualization (requires OpenGL)"
+        "--test", action="store_true"
+    )
+    parser.add_argument(
+        "--3d", dest="use_3d", action="store_true"
     )
     parser.add_argument(
         "--duration", type=int, default=60,
@@ -238,6 +283,10 @@ def main():
         "--setup", action="store_true",
         help="Create project directory structure"
     )
+    parser.add_argument(
+        "--episodes", type=int, default=3,
+        help="Number of episodes to render for trained model (default: 3)"
+    )
     
     args = parser.parse_args()
     
@@ -247,6 +296,9 @@ def main():
     print("=" * 60)
     
     try:
+        if args.render_trained:
+            render_trained_model(args.render_trained, n_episodes=args.episodes)
+            return
         # Test environment
         if args.test:
             run_environment_test()

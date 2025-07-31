@@ -115,6 +115,21 @@ class DQNTrainingManager:
                 'exploration_final_eps': 0.03,
                 'max_grad_norm': 15,
                 'policy_kwargs': dict(net_arch=[384, 384, 192])
+            },
+            'recovery_config': {
+                'learning_rate': 1e-4,
+                'buffer_size': 100000,
+                'learning_starts': 3000,
+                'batch_size': 64,
+                'gamma': 0.99,
+                'train_freq': 1,
+                'gradient_steps': 1,
+                'target_update_interval': 1000,
+                'exploration_fraction': 0.3,
+                'exploration_initial_eps': 1.0,
+                'exploration_final_eps': 0.1,
+                'max_grad_norm': 10,
+                'policy_kwargs': dict(net_arch=[256, 256])
             }
         }
     

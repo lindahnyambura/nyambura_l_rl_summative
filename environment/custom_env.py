@@ -89,6 +89,8 @@ class NairobiCBDProtestEnv(gym.Env):
         
         self.start_pos = None # Initial agent position
 
+        self.safe_zone_timer = 0
+        self.last_safe_zone = None
         # Colors for rendering
         self.colors = {
             'background': (50, 50, 50),
@@ -293,18 +295,6 @@ class NairobiCBDProtestEnv(gym.Env):
                                     dot_intensity
                                 )
     
-    def set_difficulty(self, difficulty: float):
-        """Adjust environment difficulty (0=easy, 1=hard)"""
-        self.current_difficulty = difficulty
-
-        # adjust number of police units (2 to 5)
-        num_police = min(5, max(2, int(3 + difficulty * 2)))
-        self._spawn_police_units(num_police)
-
-        # adjust police speed (0.5 to 0.9)
-        for police in self.police_units:
-            police.speed = 0.5 + difficulty * 0.4
-
     def _update_police_units(self):
         """Update police unit positions and behaviors"""
         for police in self.police_units:
@@ -324,7 +314,7 @@ class NairobiCBDProtestEnv(gym.Env):
             police.strategy_timer += 1
             
             # Occasional tear gas deployment
-            if (police.strategy_timer > 30 and random.random() < self.hazard_frequency):
+            if police.strategy_timer > 50 and random.random() < 0.02:
                 self._deploy_tear_gas(police.x, police.y)
                 police.strategy_timer = 0
             
@@ -462,17 +452,36 @@ class NairobiCBDProtestEnv(gym.Env):
         
         return observation
     
-    def _calculate_reward(self, action: int, old_pos: np.ndarray) -> Tuple[float, bool]:
+    def _calculate_reward(self, action: int) -> Tuple[float, bool]:
         """Calculate reward and check if episode is done"""
         reward = 0.0
         done = False
+        old_pos = self.agent_pos.copy()  # Store old position for hazard avoidance
         
         # Base survival reward
-        reward += 0.1
+        reward += 1.0
+
+        # Hazard avoidance bonus
+        hazard_direction = np.array([0.0, 0.0])
+        for wc in self.water_cannons:
+            # Calculate direction away from cannon
+            direction = self.agent_pos - np.array([wc.x, wc.y])
+            if np.linalg.norm(direction) > 0:
+                hazard_direction += direction / np.linalg.norm(direction)
+
+        # Reward moving away from hazards
+        if np.linalg.norm(hazard_direction) > 0:
+            move_direction = self.agent_pos - old_pos
+            if np.linalg.norm(move_direction) > 0:
+                alignment = np.dot(
+                    move_direction / np.linalg.norm(move_direction),
+                    hazard_direction / np.linalg.norm(hazard_direction)
+                )
+                reward += 0.3 * max(0, alignment)  # Reward hazard-avoidance
         
         # Distance to nearest police penalty
         _, _, police_distance = self._get_nearest_police_distance()
-        reward -= 0.05 * max(0, 20 - police_distance)  # Penalty for being too close
+        reward -= 0.1 * max(0, 15 - police_distance)  # Penalty for being too close
         
         # Hazard penalties
         tear_gas_intensity = self._get_tear_gas_intensity(
@@ -483,58 +492,29 @@ class NairobiCBDProtestEnv(gym.Env):
         reward -= 5.0 * tear_gas_intensity
         reward -= 10.0 * water_cannon_intensity
         
-        # Safe zone bonus
-        if self._is_in_safe_zone(self.agent_pos[0], self.agent_pos[1]):
-            center_dist = np.linalg.norm(self.agent_pos - np.array([self.grid_width/2, self.grid_height/2]))
-            reward += 1.0 * (1 - center_dist/max(self.grid_width, self.grid_height))
-                                         
-
-        # Exit reached
-        for exit_point in self.exit_points:
-            if np.linalg.norm(self.agent_pos - np.array(exit_point)) < 3.0:
-                reward += 50.0
-                done = True
-                return reward, done
-        
         # Check if caught by police
         for police in self.police_units:
-            if np.linalg.norm(self.agent_pos - np.array([police.x, police.y])) < 2.0:
-                reward -= 50
+            distance = math.sqrt((self.agent_pos[0] - police.x)**2 + 
+                               (self.agent_pos[1] - police.y)**2)
+            if distance < 2.0:  # Caught
+                reward -= 50.0
                 done = True
-                return reward, done
+                break
         
-        # Episode timeout ??
+        if not done:
+            # Check if reached exit point
+            for exit_point in self.exit_points:
+                distance = math.sqrt((self.agent_pos[0] - exit_point[0])**2 + 
+                               (self.agent_pos[1] - exit_point[1])**2)
+                if distance < 3.0:
+                    reward += 10.0
+                    done = True
+                    break
+        
+        # Episode timeout
         if self.current_step >= self.max_episode_steps:
             done = True
-            return reward, done
         
-        # Encourage exploration
-        cell_x, cell_y = int(self.agent_pos[0]), int(self.agent_pos[1])
-        if self.visited_map[cell_x, cell_y] == 0:
-            reward += 0.5
-        else:
-            reward += 0.05 / (1 + self.visited_map[cell_x, cell_y])
-        
-        # encourage movement away from spawn ??
-        dist_from_start = np.linalg.norm(self.agent_pos - self.start_pos)
-        reward += 0.3 * (dist_from_start / max(self.grid_width, self.grid_height))
-
-        # penalize no movement - reward movement?
-        if np.allclose(self.agent_pos, old_pos):
-            movement_dist = np.linalg.norm(self.agent_pos - old_pos)
-            reward += 0.2 * movement_dist
-
-        # edge hugging penalty
-        edge_threshold = 10.0
-        edge_dist = min(
-            self.agent_pos[0], self.agent_pos[1],
-            self.grid_width - self.agent_pos[0],
-            self.grid_height - self.agent_pos[1]
-        )
-        if edge_dist < edge_threshold:
-            penalty = 2.0 * ((edge_threshold - edge_dist) / edge_threshold)**2
-            reward -= penalty
-
         return reward, done
     
     def reset(self, seed: Optional[int] = None, options: Optional[dict] = None):
@@ -610,8 +590,72 @@ class NairobiCBDProtestEnv(gym.Env):
         self._update_hazards()
         self._update_crowd_density()
 
+        # Initialize reward
+        reward = 0.0
+        cell_x, cell_y = int(self.agent_pos[0]), int(self.agent_pos[1])
+
+        # Exploration bonus
+        dist_from_start = np.linalg.norm(self.agent_pos - self.start_pos)
+        explore_bonus = 0.3 * (dist_from_start / max(self.grid_width, self.grid_height))
+        reward += explore_bonus
+        
+        # New cell discovery bonus
+        if self.visited_map[cell_x, cell_y] == 0:
+            # Scale bonus by distance from start and crowd density
+            dist_bonus = 0.5 * (dist_from_start / max(self.grid_width, self.grid_height))
+            crowd_bonus = 0.3 * self.crowd_density_map[cell_x, cell_y]
+            reward += 1.0 + dist_bonus + crowd_bonus  # Base + scaled bonuses
+        self.visited_map[cell_x, cell_y] += 1  # Mark cell as visited
+
+        # Movement reward/penalty
+        if np.allclose(self.agent_pos, old_pos):
+            # Reward movement proportional to crowd density
+            crowd = self.crowd_density_map[cell_x, cell_y]
+            reward += 0.2 + 0.3 * crowd
+        elif action == 4:  # Stay action
+            reward -= 0.5
+        
+        # Check if agent is near the edge of the grid
+        # Penalize if too close to edges
+        edge_threshold = 0.15
+        x_norm = self.agent_pos[0] / self.grid_width
+        y_norm = self.agent_pos[1] / self.grid_height
+        edge_factor = max(
+            min(x_norm, 1-x_norm),
+            min(y_norm, 1-y_norm)
+        )
+        # quadratic penalty for being too close to edges
+        if edge_factor < edge_threshold:
+            penalty_strength = 2.0 * (1 - (edge_factor / edge_threshold))**2
+            reward -= penalty_strength
+        
+        # Safe zone handling
+        current_safe_zone = None
+        for zone in self.safe_zones:
+            if self._is_in_safe_zone(self.agent_pos[0], self.agent_pos[1]):
+                current_safe_zone = zone['center']
+                break
+
+        if current_safe_zone:
+            if current_safe_zone == self.last_safe_zone:
+                self.safe_zone_timer += 1
+                # Exponential penalty after 5 steps in same zone
+                if self.safe_zone_timer > 5:
+                    reward -= 0.5 * (self.safe_zone_timer - 5)
+            else:
+                self.safe_zone_timer = 1  # Reset timer for new zone
+                reward += 3.0
+            self.last_safe_zone = current_safe_zone
+        else:
+            self.safe_zone_timer = 0
+            self.last_safe_zone = None
+
+        # calculate hazard penalties and terminal rewards
+        hazard_reward, done = self._calculate_reward(old_pos, action)
+        reward += hazard_reward
+
         # Calculate reward and check termination
-        reward, done = self._calculate_reward(action, old_pos)
+        reward, done = self._calculate_reward(action)
         
         observation = self._get_observation()
         info = {

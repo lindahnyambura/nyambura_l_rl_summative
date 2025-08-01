@@ -8,12 +8,14 @@ import os, time, json, numpy as np
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 from datetime import datetime
+import torch.nn as nn
 
 from stable_baselines3 import PPO, A2C
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.callbacks import EvalCallback, CheckpointCallback, CallbackList
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
+from stable_baselines3.common.utils import linear_schedule
 import gymnasium as gym
 from environment.custom_env import NairobiCBDProtestEnv
 
@@ -39,6 +41,18 @@ HP_GRID: Dict[str, Dict] = {
         "clip_range": 0.2,
         "ent_coef": 0.01,
         "policy_kwargs": dict(net_arch=[256, 256]),
+    },
+    "ppo_tuned": {
+        "learning_rate": linear_schedule(1e-3, 1e-5),
+        "n_steps": 4096,
+        "batch_size": 128,
+        "n_epochs": 15,
+        "gamma": 0.995,
+        "gae_lambda": 0.92,
+        "clip_range": 0.25,
+        "ent_coef": 0.001,
+        "max_grad_norm": 0.8,
+        "policy_kwargs": dict(net_arch=[512, 512], activation_fn=nn.ReLU),
     },
     "a2c_default": {
         "learning_rate": 7e-4,
@@ -126,6 +140,21 @@ class PGTrainingManager:
         print(f"{ALGO} {name} finished in {elapsed:.1f}s.")
         return model
 
+class CustomEvalCallback(EvalCallback):
+    def _on_step(self) -> bool:
+        result = super()._on_step()
+        if self.eval_freq > 0 and self.n_calls % self.eval_freq == 0:
+            self.logger.record("time/total_steps", self.num_timesteps)
+        return result
+
+    def _log_success_callback(self, locals_, globals_):
+        info = locals_["info"]
+        if "episode" in locals_:
+            episode = locals_["episode"]
+            if episode.r > 0:  # Successful episode
+                self.logger.record("eval/success_rate", 1.0)
+            else:
+                self.logger.record("eval/success_rate", 0.0)
 # ------------------------------------------------------------------
 # 4.  CLI / quick test
 # ------------------------------------------------------------------

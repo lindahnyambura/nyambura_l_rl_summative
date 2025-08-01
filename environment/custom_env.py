@@ -293,6 +293,18 @@ class NairobiCBDProtestEnv(gym.Env):
                                     dot_intensity
                                 )
     
+    def set_difficulty(self, difficulty: float):
+        """Adjust environment difficulty (0=easy, 1=hard)"""
+        self.current_difficulty = difficulty
+
+        # adjust number of police units (2 to 5)
+        num_police = min(5, max(2, int(3 + difficulty * 2)))
+        self._spawn_police_units(num_police)
+
+        # adjust police speed (0.5 to 0.9)
+        for police in self.police_units:
+            police.speed = 0.5 + difficulty * 0.4
+
     def _update_police_units(self):
         """Update police unit positions and behaviors"""
         for police in self.police_units:
@@ -312,7 +324,7 @@ class NairobiCBDProtestEnv(gym.Env):
             police.strategy_timer += 1
             
             # Occasional tear gas deployment
-            if police.strategy_timer > 50 and random.random() < 0.02:
+            if (police.strategy_timer > 30 and random.random() < self.hazard_frequency):
                 self._deploy_tear_gas(police.x, police.y)
                 police.strategy_timer = 0
             

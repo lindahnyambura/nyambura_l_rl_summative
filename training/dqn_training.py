@@ -16,17 +16,21 @@ from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 import json
 from datetime import datetime
+import torch
 
 # Stable Baselines3 imports
 from stable_baselines3 import DQN
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.callbacks import (
     EvalCallback, StopTrainingOnRewardThreshold, 
-    CheckpointCallback, CallbackList
+    CheckpointCallback, CallbackList, BaseCallback
 )
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.results_plotter import load_results, ts2xy
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
+from stable_baselines3.common.noise import NormalActionNoise
+from stable_baselines3.common.vec_env import VecFrameStack
+from stable_baselines3.common.evaluation import evaluate_policy
 
 # Add environment to path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'environment'))
@@ -52,70 +56,6 @@ class DQNTrainingManager:
         
         # Hyperparameter configurations to test
         self.hyperparameter_configs = {
-            'default': {
-                'learning_rate': 1e-4,
-                'buffer_size': 50000,
-                'learning_starts': 1000,
-                'batch_size': 32,
-                'tau': 1.0,
-                'gamma': 0.99,
-                'train_freq': 4,
-                'gradient_steps': 1,
-                'target_update_interval': 1000,
-                'exploration_fraction': 0.1,
-                'exploration_initial_eps': 1.0,
-                'exploration_final_eps': 0.05,
-                'max_grad_norm': 10,
-                'policy_kwargs': dict(net_arch=[256, 256])
-            },
-            'aggressive_exploration': {
-                'learning_rate': 5e-4,
-                'buffer_size': 100000,
-                'learning_starts': 2000,
-                'batch_size': 64,
-                'tau': 1.0,
-                'gamma': 0.995,
-                'train_freq': 1,
-                'gradient_steps': 1,
-                'target_update_interval': 500,
-                'exploration_fraction': 0.2,
-                'exploration_initial_eps': 1.0,
-                'exploration_final_eps': 0.02,
-                'max_grad_norm': 10,
-                'policy_kwargs': dict(net_arch=[512, 512, 256])
-            },
-            'conservative': {
-                'learning_rate': 1e-5,
-                'buffer_size': 25000,
-                'learning_starts': 500,
-                'batch_size': 16,
-                'tau': 1.0,
-                'gamma': 0.98,
-                'train_freq': 8,
-                'gradient_steps': 1,
-                'target_update_interval': 2000,
-                'exploration_fraction': 0.05,
-                'exploration_initial_eps': 0.8,
-                'exploration_final_eps': 0.1,
-                'max_grad_norm': 5,
-                'policy_kwargs': dict(net_arch=[128, 128])
-            },
-            'fast_learning': {
-                'learning_rate': 3e-4,
-                'buffer_size': 75000,
-                'learning_starts': 1500,
-                'batch_size': 128,
-                'tau': 1.0,
-                'gamma': 0.99,
-                'train_freq': 2,
-                'gradient_steps': 2,
-                'target_update_interval': 750,
-                'exploration_fraction': 0.15,
-                'exploration_initial_eps': 1.0,
-                'exploration_final_eps': 0.03,
-                'max_grad_norm': 15,
-                'policy_kwargs': dict(net_arch=[384, 384, 192])
-            },
             'recovery_config': {
                 'learning_rate': 1e-4,
                 'buffer_size': 100000,
@@ -130,6 +70,51 @@ class DQNTrainingManager:
                 'exploration_final_eps': 0.05,
                 'max_grad_norm': 10,
                 'policy_kwargs': dict(net_arch=[256, 256, 128]),
+            },
+            'robust_exploration': {
+                'learning_rate': 3e-4,
+                'buffer_size': 200000, # Increased buffer size for better exploration
+                'learning_starts': 10000, # Increased learning starts, more random exploration
+                'batch_size': 128,
+                'gamma': 0.99,
+                'train_freq': 4,
+                'gradient_steps': 1,
+                'target_update_interval': 1000,
+                'exploration_fraction': 0.8, # longer exploration phase
+                'exploration_initial_eps': 1.0,
+                'exploration_final_eps': 0.1, # higher final epsilon for more exploration
+                'max_grad_norm': 10,
+                'policy_kwargs': {
+                    'net_arch': [256, 256, 128], # Deeper network for better representation
+                    'activation_fn': torch.nn.ReLU,
+                    'optimizer_class': torch.optim.AdamW,
+                    'optimizer_kwargs': {'weight_decay': 1e-5},
+                },
+            },
+            'prioritized_replay': {
+                'learning_rate': 3e-4,
+                'buffer_size': 200000,
+                'learning_starts': 10000,
+                'batch_size': 128,
+                'gamma': 0.99,
+                'train_freq': 4,
+                'gradient_steps': 1,
+                'target_update_interval': 1000,
+                'exploration_fraction': 0.8,
+                'exploration_initial_eps': 1.0,
+                'exploration_final_eps': 0.1,
+                'max_grad_norm': 10,
+                'policy_kwargs': {
+                    'net_arch': [256, 256, 128],
+                    'activation_fn': torch.nn.ReLU,
+                    'optimizer_class': torch.optim.AdamW,
+                    'optimizer_kwargs': {'weight_decay': 1e-5},
+                },
+                'replay_buffer_class': 'stable_baselines3.dqn.prioritized_replay_buffer.PrioritizedReplayBuffer',
+                'replay_buffer_kwargs': {
+                    'alpha': 0.6,  # Prioritization exponent
+                    'beta': 0.4,   # Importance sampling exponent
+                }
             }
         }
     
@@ -138,7 +123,7 @@ class DQNTrainingManager:
         """Create monitored vectorized environment for training"""
         
         def make_env():
-            env = NairobiCBDProtestEnv(render_mode=None)
+            env = NairobiCBDProtestEnv(render_mode=None, grid_size=(80, 80))
             env = Monitor(env, str(self.log_dir))
             return env
         
@@ -150,14 +135,19 @@ class DQNTrainingManager:
         
         # Normalize observations and rewards
         if normalize:
-            vec_env = VecNormalize(vec_env, norm_obs=True, norm_reward=True, 
+            vec_env = VecNormalize(vec_env, norm_obs=True, norm_reward=False, 
                                  clip_obs=10.0, clip_reward=10.0)
-        
+        vec_env = VecFrameStack(vec_env, n_stack=3)
         return vec_env
     
     def create_callbacks(self, eval_env, model_name: str, 
                         total_timesteps: int) -> CallbackList:
         """Create training callbacks for monitoring and checkpointing"""
+        # early stopping if reward plateaus
+        stop_callback = StopTrainingOnRewardThreshold(
+            reward_threshold=2000,  # Adjust based on reward scale
+            verbose=1
+        )
 
         # Evaluation callback
         eval_callback = EvalCallback(
@@ -165,20 +155,29 @@ class DQNTrainingManager:
             best_model_save_path=str(self.model_dir / f"{model_name}_best"),
             log_path=str(self.log_dir),
             eval_freq=max(total_timesteps // 20, 1000),
-            deterministic=True,
+            deterministic=False,
             render=False,
-            n_eval_episodes=10,
+            n_eval_episodes=20,
+            callback_after_eval=stop_callback,
             verbose=1
         )
         
-        # Checkpoint callback
-        checkpoint_callback = CheckpointCallback(
-            save_freq=max(total_timesteps // 10, 2000),
-            save_path=str(self.model_dir),
-            name_prefix=f"{model_name}_checkpoint"
-        )
+        # Add cirriculum learning callback
+        class CirriculumLearningCallback(BaseCallback):
+            def __init__(self, verbose=0):
+                super().__init__(verbose)
+                self.progress_remaining = 1.0
+
+            def _on_step(self) -> bool:
+                self.progress_remaining = 1.0  - (self.num_timesteps / self.locals['total_timesteps'])
+                if self.training_env is not None:
+                    for env in self.training_env.envs:
+                        if hasattr(env.unwrapped, 'set_difficulty'):
+                            difficulty = min(1.0, 1.5 - self.progress_remaining)
+                            env.unwrapped.set_difficulty(difficulty)
+                return True
         
-        return CallbackList([eval_callback, checkpoint_callback])
+        return CallbackList([eval_callback, CirriculumLearningCallback()])
     
     def train_single_config(self, config_name: str, config: Dict, 
                           total_timesteps: int = 100000, 
@@ -263,29 +262,84 @@ class DQNTrainingManager:
             train_env.close()
             eval_env.close()
     
-    def evaluate_model(self, model: DQN, env, n_episodes: int = 10) -> Tuple[float, float]:
+    def evaluate_model(self, model: DQN, env, n_episodes: int = 20) -> Tuple[float, float]:
         """Evaluate trained model performance"""
-        episode_rewards = []
-        
-        for episode in range(n_episodes):
+        metrics = {
+            'rewards': [],
+            'lengths': [],
+            'coverage': [],
+            'success_rate': 0,
+            'hazard_exposure': [],
+            'edge_time': []
+        }
+
+        for _ in range(n_episodes):
             obs = env.reset()
-            episode_reward = 0
             done = False
+            ep_metrics = {
+                'reward': 0,
+                'length': 0,
+                'visited': set(),
+                'hazard_steps': 0,
+                'edge_steps': 0
+            }
             
             while not done:
-                action, _ = model.predict(obs, deterministic=True)
-                obs, reward, done, info = env.step(action)
-                episode_reward += reward[0] if isinstance(reward, np.ndarray) else reward
-                
-                if isinstance(done, np.ndarray):
-                    done = done[0]
-            
-            episode_rewards.append(episode_reward)
+                action, _ = model.predict(obs, deterministic=False)
+                obs,reward, done, _, _ = env.step(action)
+
+                # update metrics
+                ep_metrics['reward'] += reward
+                ep_metrics['length'] += 1
+
+                # track visited cells
+                cell = (int(env.agent_pos[0]), int(env.agent_pos[1]))
+                ep_metrics['visited'].add(cell)
+
+                # track hazards
+                if (env._get_tear_gas_intensity(*env.agent_pos) > 0.1 or
+                    env._get_water_cannon_intensity(*env.agent_pos) > 0.1):
+                    ep_metrics['hazard_steps'] += 1
+
+                # track edge hugging
+                edge_dist = min(
+                    env.agent_pos[0],
+                    env.grid_width - env.agent_pos[0],
+                    env.agent_pos[1],
+                    env.grid_height - env.agent_pos[1]
+                )
+                if edge_dist < 10:
+                    ep_metrics['edge_steps'] += 1
+
+            # store episode metrics
+            metrics['rewards'].append(ep_metrics['reward'])
+            metrics['lengths'].append(ep_metrics['length'])
+            metrics['coverage'].append(len(ep_metrics['visited']) / (env.grid_width * env.grid_height))
+            metrics['hazard_exposure'].append(ep_metrics['hazard_steps'] / ep_metrics['length'])
+            metrics['edge_time'].append(ep_metrics['edge_steps'] / ep_metrics['length'])
+
+            if ep_metrics['reward'] > 500:
+                metrics['success_rate'] += 1
         
-        mean_reward = np.mean(episode_rewards)
-        std_reward = np.std(episode_rewards)
-        
-        return mean_reward, std_reward
+        # calculate final metrics
+        metrics['success_rate'] /= n_episodes
+        results = {
+            'mean_reward': np.mean(metrics['rewards']),
+            'std_reward': np.std(metrics['rewards']),
+            'mean_coverage': np.mean(metrics['coverage']),
+            'success_rate': metrics['success_rate'],
+            'mean_hazard_exposure': np.mean(metrics['hazard_exposure']),
+            'mean_edge_time': np.mean(metrics['edge_time'])
+        }
+
+        print("\n=== Comprehensive Evaluation ===")
+        print(f"Mean Reward: {results['mean_reward']:.1f} ± {results['std_reward']:.1f}")
+        print(f"Map Coverage: {results['mean_coverage']:.1%}")
+        print(f"Success Rate: {results['success_rate']:.1%}")
+        print(f"Hazard Exposure: {results['mean_hazard_exposure']:.1%} of steps")
+        print(f"Edge Time: {results['mean_edge_time']:.1%} of steps")
+    
+        return results
     
     def hyperparameter_search(self, total_timesteps: int = 100000) -> Dict:
         """Run hyperparameter search across all configurations"""
@@ -450,36 +504,18 @@ def main():
     # Initialize training manager
     trainer = DQNTrainingManager()
     
-    # Run hyperparameter search
-    timesteps = 150000  # Adjust based on computational resources
-    analysis = trainer.hyperparameter_search(total_timesteps=timesteps)
-    
-    # Print results
-    print("\n" + "="*60)
-    print("HYPERPARAMETER SEARCH RESULTS")
-    print("="*60)
-    
-    if 'error' not in analysis:
-        print(f"Best configuration: {analysis['best_config']}")
-        print(f"Best reward: {analysis['best_reward']:.2f}")
-        print(f"Number of successful runs: {analysis['num_successful_runs']}")
-        print(f"Total search time: {analysis['total_search_time']:.2f} seconds")
-        
-        print("\nReward Statistics:")
-        for key, value in analysis['reward_stats'].items():
-            print(f"  {key}: {value:.2f}")
-    else:
-        print(f"Error in analysis: {analysis['error']}")
-    
-    # Create performance plots
-    trainer.create_performance_plots()
-    
-    # Save final results
+    # Train only robust_exploration
+    timesteps = 150000
+    model, results = trainer.train_single_config(
+        "robust_exploration", 
+        trainer.hyperparameter_configs["robust_exploration"], 
+        total_timesteps=timesteps
+    )
+    print(results)
     trainer.save_training_history()
-    
     print("\nDQN training completed!")
     print(f"Models saved in: {trainer.model_dir}")
     print(f"Logs saved in: {trainer.log_dir}")
 
-
-if __name__ == "__main__":main()
+if __name__ == "__main__":
+    main()

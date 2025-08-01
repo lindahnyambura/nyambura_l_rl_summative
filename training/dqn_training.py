@@ -29,7 +29,6 @@ from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.results_plotter import load_results, ts2xy
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 from stable_baselines3.common.noise import NormalActionNoise
-from stable_baselines3.common.vec_env import VecFrameStack
 from stable_baselines3.common.evaluation import evaluate_policy
 
 # Add environment to path
@@ -137,7 +136,6 @@ class DQNTrainingManager:
         if normalize:
             vec_env = VecNormalize(vec_env, norm_obs=True, norm_reward=False, 
                                  clip_obs=10.0, clip_reward=10.0)
-        vec_env = VecFrameStack(vec_env, n_stack=3)
         return vec_env
     
     def create_callbacks(self, eval_env, model_name: str, 

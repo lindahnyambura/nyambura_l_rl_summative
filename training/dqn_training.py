@@ -123,7 +123,7 @@ class DQNTrainingManager:
         """Create monitored vectorized environment for training"""
         
         def make_env():
-            env = NairobiCBDProtestEnv(render_mode=None, grid_size=(80, 80))
+            env = NairobiCBDProtestEnv(render_mode=None, grid_size=(100, 100))
             env = Monitor(env, str(self.log_dir))
             return env
         

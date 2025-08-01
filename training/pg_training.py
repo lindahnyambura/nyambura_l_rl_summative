@@ -15,7 +15,6 @@ from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.callbacks import EvalCallback, CheckpointCallback, CallbackList
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
-from stable_baselines3.common.utils import linear_schedule
 import gymnasium as gym
 from environment.custom_env import NairobiCBDProtestEnv
 
@@ -26,7 +25,7 @@ gym.register(
 
 # 1.  Choose algorithm (PPO, A2C, REINFORCE)
 
-ALGO = "REINFORCE"          # <--- change to "A2C" or "REINFORCE" (REINFORCE = A2C w/o baseline)
+ALGO = "PPO"          # <--- change to "A2C" or "REINFORCE" (REINFORCE = A2C w/o baseline)
 POLICY_TYPE = "MlpPolicy"
 
 # 2.  Hyper-parameter grids
@@ -43,7 +42,7 @@ HP_GRID: Dict[str, Dict] = {
         "policy_kwargs": dict(net_arch=[256, 256]),
     },
     "ppo_tuned": {
-        "learning_rate": linear_schedule(1e-3, 1e-5),
+        "learning_rate": 1e-4,
         "n_steps": 4096,
         "batch_size": 128,
         "n_epochs": 15,
@@ -52,7 +51,7 @@ HP_GRID: Dict[str, Dict] = {
         "clip_range": 0.25,
         "ent_coef": 0.001,
         "max_grad_norm": 0.8,
-        "policy_kwargs": dict(net_arch=[512, 512], activation_fn=nn.ReLU),
+        "policy_kwargs": dict(net_arch=[512, 512], activation_fn=nn.ReLU, ortho_init=False),
     },
     "a2c_default": {
         "learning_rate": 7e-4,

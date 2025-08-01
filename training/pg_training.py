@@ -51,9 +51,7 @@ HP_GRID: Dict[str, Dict] = {
         "clip_range": 0.25,
         "ent_coef": 0.001,
         "max_grad_norm": 0.8,
-        "policy_kwargs": dict(net_arch=[256, 256], feature_extractor_kwargs=dict(features_dim=128)),
-        "use_sde": True,  # Stochastic Policy
-        "sde_sample_freq": 4,  # Sample SDE every 4 steps
+        "policy_kwargs": dict(net_arch=[512, 512], log_std_init=-0.5, squash_output=False, feature_extractor_kwargs=dict(features_dim=128)),
     },
     "a2c_default": {
         "learning_rate": 7e-4,

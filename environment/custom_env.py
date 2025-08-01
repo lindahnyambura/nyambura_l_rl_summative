@@ -589,19 +589,20 @@ class NairobiCBDProtestEnv(gym.Env):
         self.visited_map[cell_x, cell_y] += 1  # Mark cell as visited
 
         # Movement reward/penalty
-        if np.allclose(self.agent_pos, old_pos):
+        if not np.allclose(self.agent_pos, old_pos):
             # Reward movement proportional to crowd density
             crowd = self.crowd_density_map[cell_x, cell_y]
             reward += 0.2 + 0.3 * crowd
 
             # HAZARD AVOIDANCE BONUS MOVED HERE
+            hazard_avoidance_bonus = 0.0
             hazard_direction = np.array([0.0, 0.0])
             for wc in self.water_cannons:
                 direction = self.agent_pos - np.array([wc.x, wc.y])
-                if np.linalg.norm(direction) > 0:
+                if np.linalg.norm(direction) > 1e-6:
                     hazard_direction += direction / np.linalg.norm(direction)
             
-            if np.linalg.norm(hazard_direction) > 0:
+            if np.linalg.norm(hazard_direction) > 1e-6:
                 move_direction = self.agent_pos - old_pos
                 move_norm = np.linalg.norm(move_direction)
                 # add safety check for zero length vectors
@@ -610,7 +611,8 @@ class NairobiCBDProtestEnv(gym.Env):
                         move_direction / move_norm,
                         hazard_direction / np.linalg.norm(hazard_direction)
                     )
-                reward += 0.3 * max(0, alignment)  # Reward hazard-avoidance
+                    hazard_avoidance_bonus = 0.3 * max(0, alignment)  # Reward hazard-avoidance
+                reward += hazard_avoidance_bonus  # Reward hazard-avoidance
         elif action == 4:  # Stay action
             reward -= 0.5
         

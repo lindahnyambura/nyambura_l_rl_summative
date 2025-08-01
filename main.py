@@ -29,7 +29,7 @@ from environment.rendering import NairobiCBD3DRenderer, create_demo_visualizatio
 # map algorithms to their respective model classes and default paths
 ALGO_MAP = {
     "dqn":   (DQN,   "models/dqn/best_model.zip"),
-    "ppo":   (PPO,   "models/ppo/best_model.zip"),
+    "ppo":   (PPO,   "models/ppo/best_model (4).zip"),
     "a2c":   (A2C,   "models/a2c/best_model.zip"),
     "reinf": (A2C,   "models/reinforce/best_model.zip"),
 }

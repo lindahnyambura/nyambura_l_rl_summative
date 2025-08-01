@@ -51,7 +51,9 @@ HP_GRID: Dict[str, Dict] = {
         "clip_range": 0.25,
         "ent_coef": 0.001,
         "max_grad_norm": 0.8,
-        "policy_kwargs": dict(net_arch=[512, 512], activation_fn=nn.ReLU, ortho_init=False),
+        "policy_kwargs": dict(net_arch=[256, 256], feature_extractor_kwargs=dict(features_dim=128)),
+        "use_sde": True,  # Stochastic Policy
+        "sde_sample_freq": 4,  # Sample SDE every 4 steps
     },
     "a2c_default": {
         "learning_rate": 7e-4,
@@ -87,7 +89,7 @@ class PGTrainingManager:
                 seed=42,
                 env_kwargs={"render_mode": None},
             )
-            return VecNormalize(env, norm_obs=True, norm_reward=True)
+            return VecNormalize(env, norm_obs=True, norm_reward=True, clip_reward=10.0)
 
         return _make()
 

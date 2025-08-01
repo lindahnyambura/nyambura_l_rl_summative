@@ -458,11 +458,11 @@ class NairobiCBDProtestEnv(gym.Env):
         done = False
         
         # Base survival reward
-        reward += 1.0
+        reward += 0.1
         
         # Distance to nearest police penalty
         _, _, police_distance = self._get_nearest_police_distance()
-        reward -= 0.1 * max(0, 15 - police_distance)  # Penalty for being too close
+        reward -= 0.5 * max(0, 15 - police_distance)  # Penalty for being too close
         
         # Hazard penalties
         tear_gas_intensity = self._get_tear_gas_intensity(
@@ -488,7 +488,7 @@ class NairobiCBDProtestEnv(gym.Env):
                 distance = math.sqrt((self.agent_pos[0] - exit_point[0])**2 + 
                                (self.agent_pos[1] - exit_point[1])**2)
                 if distance < 3.0:
-                    reward += 10.0
+                    reward += 50.0
                     done = True
                     break
         
@@ -583,9 +583,9 @@ class NairobiCBDProtestEnv(gym.Env):
         # New cell discovery bonus
         if self.visited_map[cell_x, cell_y] == 0:
             # Scale bonus by distance from start and crowd density
-            dist_bonus = 0.5 * (dist_from_start / max(self.grid_width, self.grid_height))
-            crowd_bonus = 0.3 * self.crowd_density_map[cell_x, cell_y]
-            reward += 1.0 + dist_bonus + crowd_bonus  # Base + scaled bonuses
+            dist_bonus = 1.0 * (dist_from_start / max(self.grid_width, self.grid_height))
+            crowd_bonus = 0.5 * self.crowd_density_map[cell_x, cell_y]
+            reward += 3.0 + dist_bonus + crowd_bonus  # Base + scaled bonuses
         self.visited_map[cell_x, cell_y] += 1  # Mark cell as visited
 
         # Movement reward/penalty
@@ -603,10 +603,13 @@ class NairobiCBDProtestEnv(gym.Env):
             
             if np.linalg.norm(hazard_direction) > 0:
                 move_direction = self.agent_pos - old_pos
-                alignment = np.dot(
-                    move_direction / np.linalg.norm(move_direction),
-                    hazard_direction / np.linalg.norm(hazard_direction)
-                )
+                move_norm = np.linalg.norm(move_direction)
+                # add safety check for zero length vectors
+                if move_norm > 1e-6:
+                    alignment = np.dot(
+                        move_direction / move_norm,
+                        hazard_direction / np.linalg.norm(hazard_direction)
+                    )
                 reward += 0.3 * max(0, alignment)  # Reward hazard-avoidance
         elif action == 4:  # Stay action
             reward -= 0.5
@@ -637,7 +640,7 @@ class NairobiCBDProtestEnv(gym.Env):
                 self.safe_zone_timer += 1
                 # Exponential penalty after 5 steps in same zone
                 if self.safe_zone_timer > 5:
-                    reward -= 0.5 * (self.safe_zone_timer - 5)
+                    reward -= 2.0 * (self.safe_zone_timer - 5)
             else:
                 self.safe_zone_timer = 1  # Reset timer for new zone
                 reward += 3.0

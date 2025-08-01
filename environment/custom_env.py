@@ -647,7 +647,7 @@ class NairobiCBDProtestEnv(gym.Env):
             self.last_safe_zone = None
 
         # calculate hazard penalties and terminal rewards
-        hazard_reward, done = self._calculate_reward()
+        hazard_reward, done = self._calculate_reward(action)
         reward += hazard_reward
 
         # Calculate reward and check termination

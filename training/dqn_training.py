@@ -119,17 +119,17 @@ class DQNTrainingManager:
             'recovery_config': {
                 'learning_rate': 1e-4,
                 'buffer_size': 100000,
-                'learning_starts': 3000,
-                'batch_size': 64,
+                'learning_starts': 5000,
+                'batch_size': 128,
                 'gamma': 0.99,
-                'train_freq': 1,
+                'train_freq': 4,
                 'gradient_steps': 1,
-                'target_update_interval': 1000,
-                'exploration_fraction': 0.3,
+                'target_update_interval': 500,
+                'exploration_fraction': 0.5,
                 'exploration_initial_eps': 1.0,
-                'exploration_final_eps': 0.1,
+                'exploration_final_eps': 0.05,
                 'max_grad_norm': 10,
-                'policy_kwargs': dict(net_arch=[256, 256])
+                'policy_kwargs': dict(net_arch=[256, 256, 128]),
             }
         }
     

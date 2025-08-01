@@ -456,11 +456,11 @@ class NairobiCBDProtestEnv(gym.Env):
         done = False
         
         # Base survival reward
-        reward += 1.0
+        reward += 0.1
         
         # Distance to nearest police penalty
         _, _, police_distance = self._get_nearest_police_distance()
-        reward -= 0.1 * max(0, 15 - police_distance)  # Penalty for being too close
+        reward -= 0.05 * max(0, 20 - police_distance)  # Penalty for being too close
         
         # Hazard penalties
         tear_gas_intensity = self._get_tear_gas_intensity(
@@ -473,12 +473,14 @@ class NairobiCBDProtestEnv(gym.Env):
         
         # Safe zone bonus
         if self._is_in_safe_zone(self.agent_pos[0], self.agent_pos[1]):
-            reward += 2.0
+            center_dist = np.linalg.norm(self.agent_pos - np.array([self.grid_width/2, self.grid_height/2]))
+            reward += 1.0 * (1 - center_dist/max(self.grid_width, self.grid_height))
+                                         
 
         # Exit reached
         for exit_point in self.exit_points:
             if np.linalg.norm(self.agent_pos - np.array(exit_point)) < 3.0:
-                reward += 10.0
+                reward += 50.0
                 done = True
                 return reward, done
         
@@ -489,7 +491,7 @@ class NairobiCBDProtestEnv(gym.Env):
                 done = True
                 return reward, done
         
-        # Episode timeout
+        # Episode timeout ??
         if self.current_step >= self.max_episode_steps:
             done = True
             return reward, done
@@ -497,29 +499,29 @@ class NairobiCBDProtestEnv(gym.Env):
         # Encourage exploration
         cell_x, cell_y = int(self.agent_pos[0]), int(self.agent_pos[1])
         if self.visited_map[cell_x, cell_y] == 0:
-            reward += 1.0
+            reward += 0.5
         else:
-            reward += 0.1 / (1 + self.visited_map[cell_x, cell_y])
-        self.visited_map[cell_x, cell_y] += 1
+            reward += 0.05 / (1 + self.visited_map[cell_x, cell_y])
         
-        # encourage movement away from spawn
+        # encourage movement away from spawn ??
         dist_from_start = np.linalg.norm(self.agent_pos - self.start_pos)
         reward += 0.3 * (dist_from_start / max(self.grid_width, self.grid_height))
 
-        # penalize no movement
+        # penalize no movement - reward movement?
         if np.allclose(self.agent_pos, old_pos):
-            reward -= 2.0
+            movement_dist = np.linalg.norm(self.agent_pos - old_pos)
+            reward += 0.2 * movement_dist
 
         # edge hugging penalty
-        edge_threshold = 5.0
+        edge_threshold = 10.0
         edge_dist = min(
             self.agent_pos[0], self.agent_pos[1],
             self.grid_width - self.agent_pos[0],
             self.grid_height - self.agent_pos[1]
         )
         if edge_dist < edge_threshold:
-            reward -= (edge_threshold - edge_dist) * 0.5
-
+            penalty = 2.0 * ((edge_threshold - edge_dist) / edge_threshold)**2
+            reward -= penalty
 
         return reward, done
     

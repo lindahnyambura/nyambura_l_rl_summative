@@ -456,28 +456,9 @@ class NairobiCBDProtestEnv(gym.Env):
         """Calculate reward and check if episode is done"""
         reward = 0.0
         done = False
-        old_pos = self.agent_pos.copy()  # Store old position for hazard avoidance
         
         # Base survival reward
         reward += 1.0
-
-        # Hazard avoidance bonus
-        hazard_direction = np.array([0.0, 0.0])
-        for wc in self.water_cannons:
-            # Calculate direction away from cannon
-            direction = self.agent_pos - np.array([wc.x, wc.y])
-            if np.linalg.norm(direction) > 0:
-                hazard_direction += direction / np.linalg.norm(direction)
-
-        # Reward moving away from hazards
-        if np.linalg.norm(hazard_direction) > 0:
-            move_direction = self.agent_pos - old_pos
-            if np.linalg.norm(move_direction) > 0:
-                alignment = np.dot(
-                    move_direction / np.linalg.norm(move_direction),
-                    hazard_direction / np.linalg.norm(hazard_direction)
-                )
-                reward += 0.3 * max(0, alignment)  # Reward hazard-avoidance
         
         # Distance to nearest police penalty
         _, _, police_distance = self._get_nearest_police_distance()
@@ -612,6 +593,21 @@ class NairobiCBDProtestEnv(gym.Env):
             # Reward movement proportional to crowd density
             crowd = self.crowd_density_map[cell_x, cell_y]
             reward += 0.2 + 0.3 * crowd
+
+            # HAZARD AVOIDANCE BONUS MOVED HERE
+            hazard_direction = np.array([0.0, 0.0])
+            for wc in self.water_cannons:
+                direction = self.agent_pos - np.array([wc.x, wc.y])
+                if np.linalg.norm(direction) > 0:
+                    hazard_direction += direction / np.linalg.norm(direction)
+            
+            if np.linalg.norm(hazard_direction) > 0:
+                move_direction = self.agent_pos - old_pos
+                alignment = np.dot(
+                    move_direction / np.linalg.norm(move_direction),
+                    hazard_direction / np.linalg.norm(hazard_direction)
+                )
+                reward += 0.3 * max(0, alignment)  # Reward hazard-avoidance
         elif action == 4:  # Stay action
             reward -= 0.5
         
@@ -651,7 +647,7 @@ class NairobiCBDProtestEnv(gym.Env):
             self.last_safe_zone = None
 
         # calculate hazard penalties and terminal rewards
-        hazard_reward, done = self._calculate_reward(old_pos, action)
+        hazard_reward, done = self._calculate_reward()
         reward += hazard_reward
 
         # Calculate reward and check termination

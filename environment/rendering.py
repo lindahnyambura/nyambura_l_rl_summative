@@ -669,6 +669,11 @@ class NairobiCBD3DRenderer:
         image = np.flipud(image)  # Flip vertically to match OpenGL's bottom-left origin
         return image[:, :, :3]  # Return RGB only, discard alpha channel
         
+    def render_and_capture(self, env_state):
+        """Render scene and capture frame in one call"""
+        self.render_scene(env_state)
+        return self.capture_frame()
+    
     def close(self):
         """Clean up resources"""
         pygame.quit()

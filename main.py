@@ -29,14 +29,14 @@ from environment.rendering import NairobiCBD3DRenderer, create_demo_visualizatio
 # map algorithms to their respective model classes and default paths
 ALGO_MAP = {
     "dqn":   (DQN,   "models/dqn/best_model.zip"),
-    "ppo":   (PPO,   "models/ppo/best_model (4).zip"),
+    "ppo":   (PPO,   "models/ppo/best_model (6).zip"),
     "a2c":   (A2C,   "models/a2c/best_model.zip"),
     "reinf": (A2C,   "models/reinforce/best_model.zip"),
 }
 
 # render trained policy
-def render_trained_model(algo: str, n_episodes: int = 3, fps: int = 8):
-    """Record 3 short episodes of the trained agent."""
+def render_trained_model(algo: str, n_episodes: int = 3, fps: int = 8, use_3d: bool = False):
+    """Record episodes of the trained agent in either 2D or 3D visualization."""
     if algo not in ALGO_MAP:
         raise ValueError(f"Unknown algo '{algo}'. Choose from {list(ALGO_MAP.keys())}")
 
@@ -44,24 +44,79 @@ def render_trained_model(algo: str, n_episodes: int = 3, fps: int = 8):
     if not Path(model_path).exists():
         raise FileNotFoundError(f"Model not found: {model_path}")
 
+    # Load model and environment
     model = Model.load(model_path)
-    env = gym.make("NairobiProtestEnv-v0", render_mode="rgb_array")
+    env = gym.make("NairobiProtestEnv-v0", render_mode="human" if not use_3d else None)
+    
+    # initialize 3d renderer if needed
+    renderer = NairobiCBD3DRenderer() if use_3d else None
     frames = []
+    frame_capture_interval = 2  # Capture every 2nd frame for GIF
+    frame_count = 0
+    
+    try:
+        for ep in range(n_episodes):
+            obs, _ = env.reset(seed=ep)
+            done = False
 
-    for ep in range(n_episodes):
-        obs, _ = env.reset(seed=ep)
-        done = False
-        while not done:
-            action, _ = model.predict(obs, deterministic=True)
-            obs, reward, terminated, truncated, info = env.step(action)
-            frames.append(env.render())
-            done = terminated or truncated
+            while not done:
+                # get aget action
+                action, _ = model.predict(obs, deterministic=True)
+                obs, reward, terminated, truncated, info = env.step(action)
+                done = terminated or truncated
 
-    env.close()
-    outfile = Path("report") / f"{algo}_demo_3d.mp4"
-    outfile.parent.mkdir(exist_ok=True)
-    imageio.mimsave(str(outfile), frames, fps=fps)
-    print(f"Video saved → {outfile}")
+                # prepare environment state
+                env_state = {
+                    'agent_pos': env.unwrapped.agent_pos,
+                    'police_units': env.unwrapped.police_units,
+                    'tear_gas_clouds': env.unwrapped.tear_gas_clouds,
+                    'water_cannons': env.unwrapped.water_cannons,
+                    'crowd_density_map': env.unwrapped.crowd_density_map,
+                    'buildings': env.unwrapped.buildings,
+                    'safe_zones': env.unwrapped.safe_zones,
+                    'grid_width': env.unwrapped.grid_width,
+                    'grid_height': env.unwrapped.grid_height
+                }
+
+                # capture frame at specified intervals
+                if frame_count % frame_capture_interval == 0:
+                    if use_3d:
+                        frame = renderer.render_and_capture(env_state)
+                    else:
+                        frame = env.render()
+                    frames.append(frame)
+                frame_count += 1
+
+                # handle events for 3d viewer
+                if use_3d:
+                    if not renderer.handle_events():
+                        done = True  # Exit if window is closed
+        
+        # save video
+        video_type = "3d" if use_3d else "2d"
+        outfile = Path("report") / f"trained_model_{algo}_{video_type}.mp4"
+        outfile.parent.mkdir(exist_ok=True)
+
+        # use mp4 format 
+        if frames:
+            with imageio.get_writer(
+                str(outfile),
+                fps=fps,
+                codec='libx264',
+                quality=9,
+                pixelformat='yuv420p'
+            ) as writer:
+                for frame in frames:
+                    writer.append_data(frame)
+            print(f"video saved to {outfile}")
+        else:
+            print("No frames captured. Video not saved.")
+    
+    finally:
+        env.close()
+        if renderer:
+            renderer.close()
+
 
 def capture_opengl_frame(width, height):
     # Read pixels from OpenGL framebuffer
@@ -93,13 +148,10 @@ def create_random_agent_demo(duration: int = 60, save_gif: bool = True, use_3d: 
     env = NairobiCBDProtestEnv(render_mode="human" if not use_3d else None)
     
     # Initialize renderer
-    if use_3d:
-        renderer = NairobiCBD3DRenderer()
-        frames = []
-    else:
-        renderer = None
-        if save_gif:
-            frames = []
+    renderer = NairobiCBD3DRenderer() if use_3d else None
+    
+    # Prepare to save frames
+    frames = []
     
     # Reset environment
     obs, info = env.reset()
@@ -150,67 +202,62 @@ def create_random_agent_demo(duration: int = 60, save_gif: bool = True, use_3d: 
                     'grid_width': env.grid_width,
                     'grid_height': env.grid_height
                 }
-                frames = []
-                renderer.render_scene(env_state)
-
-                if save_gif:
-                    frames.append(renderer.capture_frame())
                 
-                # Capture frame for GIF
-                if save_gif and step_count % 3 == 0:  # Every 3rd frame to reduce size
-                    frame = capture_opengl_frame(renderer.width, renderer.height)
+                # Capture frame from 3D renderer
+                if step_count % 2 == 0:  # Capture every 2nd frame
+                    if use_3d:
+                        frame = renderer.render_and_capture(env_state)
+                    else:
+                        frame = env.render()
                     frames.append(frame)
-            else:
-                frame = env.render()
-                if save_gif and step_count % 2 == 0:  # Every 2nd frame
-                    frames.append(frame)
-            
-            # Reset if episode ends
-            if done or truncated:
-                episode_count += 1
-                print(f"Episode {episode_count} completed. Steps: {step_count}, Reward: {total_reward:.2f}")
-                obs, info = env.reset()
-                total_reward = 0
-            
-            # Control frame rate
-            clock.tick(30)
-            
-            # Print progress every 5 seconds
-            elapsed = time.time() - start_time
-            if int(elapsed) % 5 == 0 and step_count % 150 == 0:
-                print(f"Demo progress: {elapsed:.1f}/{duration}s - Steps: {step_count}")
-    
+
+                # reset if episode ends
+                if done or truncated:
+                    episode_count += 1
+                    print(f"Episode {episode_count} completed. Steps: {step_count}, Reward: {total_reward:.2f}")
+                    obs, info = env.reset()
+                    total_reward = 0
+
+                # control frame rate
+                clock.tick(30)  # Limit to 30 FPS
+
+                # print progress every 5 seconds
+                elapsed = time.time() - start_time
+                if int(elapsed) % 5 == 0 and step_count % 150 == 0:
+                    print(f"Demo progress: {elapsed:.1f}/{duration}s - Steps: {step_count}")
     except KeyboardInterrupt:
         print("\nDemo interrupted by user")
-    
     finally:
-        # Save GIF if requested
-        if save_gif and use_3d and frames:
-            print("\nSaving 3D demonstration GIF...")
-            gif_path = Path("media") / "random_agent_demo_3d.gif"
-            gif_path.parent.mkdir(exist_ok=True)
-            
-            try:
-                imageio.mimsave(
-                    str(gif_path), 
-                    frames, 
-                    fps=15
-                )
-                print(f"3D GIF saved to: {gif_path}")
-            except Exception as e:
-                print(f"Failed to save 3D GIF: {e}")
+        if save_gif and frames:
+            # save as mp4
+            video_type = "3d" if use_3d else "2d"
+            video_path = Path("report") / f"random_agent_demo_{video_type}.mp4"
+            video_path.parent.mkdir(exist_ok=True)
+
+            with imageio.get_writer(
+                str(video_path),
+                fps=15,
+                codec='libx264',
+                quality=9,
+                pixelformat='yuv420p'
+            ) as writer:
+                for frame in frames:
+                    writer.append_data(frame)
+            print(f"Demo video saved to {video_path}")
+        elif save_gif:
+            print("No frames captured. GIF not saved.")
         
-        # Cleanup
+        # clean up
         if use_3d and renderer:
-            renderer.close()
+            renderer.close()    
         env.close()
-        
+
         print(f"\nDemo completed!")
         print(f"Total episodes: {episode_count}")
         print(f"Total steps: {step_count}")
         print(f"Average steps per episode: {step_count / max(episode_count, 1):.1f}")
 
-
+     
 def run_environment_test():
     """Test the environment functionality"""
     print("Testing Nairobi CBD Protest Environment...")

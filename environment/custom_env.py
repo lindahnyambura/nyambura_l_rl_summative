@@ -53,8 +53,8 @@ class NairobiCBDProtestEnv(gym.Env):
         self.max_episode_steps = 1000
         self.current_step = 0
         
-        # Action space: 6 discrete actions
-        self.action_space = spaces.Discrete(6)
+        # Action space: 6 discrete actions - 5, removed stay
+        self.action_space = spaces.Discrete(5)
         
         # State space: 10-dimensional continuous observation
         self.observation_space = spaces.Box(
@@ -550,10 +550,13 @@ class NairobiCBDProtestEnv(gym.Env):
         elif action == 3:  # Move West
             new_pos = self.agent_pos + np.array([-self.step_size, 0])
             self.last_direction = np.array([-1, 0])
-        elif action == 4:  # Stay
-            new_pos = self.agent_pos.copy()
-        elif action == 5:  # Sprint
-            new_pos = self.agent_pos + self.last_direction * self.step_size * self.sprint_multiplier
+        #elif action == 4:  # Stay
+            #new_pos = self.agent_pos.copy()
+        elif action == 4:  # Sprint
+            if np.all(self.last_direction == 0):
+                new_pos = self.agent_pos.copy()
+            else:
+                new_pos = self.agent_pos + self.last_direction * self.step_size * self.sprint_multiplier
         else:
             new_pos = self.agent_pos.copy()
         
@@ -656,7 +659,7 @@ class NairobiCBDProtestEnv(gym.Env):
         reward += hazard_reward
 
         # Calculate reward and check termination
-        reward, done = self._calculate_reward(action)
+        reward, done = self._calculate_reward(action, old_pos)
         
         observation = self._get_observation()
         info = {

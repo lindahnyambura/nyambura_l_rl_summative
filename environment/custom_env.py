@@ -659,7 +659,7 @@ class NairobiCBDProtestEnv(gym.Env):
         reward += hazard_reward
 
         # Calculate reward and check termination
-        reward, done = self._calculate_reward(action, old_pos)
+        reward, done = self._calculate_reward(action)
         
         observation = self._get_observation()
         info = {

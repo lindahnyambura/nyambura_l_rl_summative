@@ -30,7 +30,7 @@ from environment.rendering import NairobiCBD3DRenderer, create_demo_visualizatio
 ALGO_MAP = {
     "dqn":   (DQN,   "models/dqn/best_model.zip"),
     "ppo":   (PPO,   "models/ppo/best_model (6).zip"),
-    "a2c":   (A2C,   "models/a2c/best_model.zip"),
+    "a2c":   (A2C,   "models/a2c/best_model (7).zip"),
     "reinf": (A2C,   "models/reinforce/best_model.zip"),
 }
 

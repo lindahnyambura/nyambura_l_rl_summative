@@ -458,7 +458,8 @@ class NairobiCBDProtestEnv(gym.Env):
         done = False
         
         # Base survival reward
-        reward += 0.1
+        survival_reward = max(0.1, 1.0 - (self.current_step / 500))  # Decays linearly over time
+        reward += survival_reward
         
         # Distance to nearest police penalty
         _, _, police_distance = self._get_nearest_police_distance()
@@ -488,7 +489,8 @@ class NairobiCBDProtestEnv(gym.Env):
                 distance = math.sqrt((self.agent_pos[0] - exit_point[0])**2 + 
                                (self.agent_pos[1] - exit_point[1])**2)
                 if distance < 3.0:
-                    reward += 50.0
+                    exit_reward = 50.0 + (self.current_step / 10)
+                    reward += exit_reward
                     done = True
                     break
         
@@ -516,7 +518,7 @@ class NairobiCBDProtestEnv(gym.Env):
 
         # Reset visited map
         self.visited_map.fill(0.0)
-        
+        self.visited_set = set()
         # # Reset start position
         self.start_pos = self.agent_pos.copy()
 
@@ -590,12 +592,15 @@ class NairobiCBDProtestEnv(gym.Env):
             crowd_bonus = 0.5 * self.crowd_density_map[cell_x, cell_y]
             reward += 3.0 + dist_bonus + crowd_bonus  # Base + scaled bonuses
         self.visited_map[cell_x, cell_y] += 1  # Mark cell as visited
+        self.visited_set.add((cell_x, cell_y))  # Track unique cells visited
 
         # Movement reward/penalty
         if not np.allclose(self.agent_pos, old_pos):
             # Reward movement proportional to crowd density
             crowd = self.crowd_density_map[cell_x, cell_y]
             reward += 0.2 + 0.3 * crowd
+            movement = np.linalg.norm(self.agent_pos - old_pos)
+            reward += 0.5 * movement
 
             # HAZARD AVOIDANCE BONUS MOVED HERE
             hazard_avoidance_bonus = 0.0
@@ -672,7 +677,11 @@ class NairobiCBDProtestEnv(gym.Env):
         
         if self.render_mode == "human":
             self.render()
-        
+        explored_ratio = len(self.visited_set) / (self.grid_width * self.grid_height)
+        if explored_ratio < 0.2:
+            exploration_penalty = 5.0 * (0.2 - explored_ratio)
+            reward -= exploration_penalty
+
         return observation, reward, done, False, info
     
     def render(self):

@@ -30,47 +30,39 @@ POLICY_TYPE = "MlpPolicy"
 
 # 2.  Hyper-parameter grids
 HP_GRID: Dict[str, Dict] = {
-    "ppo_default": {
-        "learning_rate": 3e-4,
+    "ppo_final": {
+        "learning_rate": 2.5e-4,
         "n_steps": 2048,
         "batch_size": 64,
         "n_epochs": 10,
         "gamma": 0.99,
         "gae_lambda": 0.95,
         "clip_range": 0.2,
-        "ent_coef": 0.01,
-        "policy_kwargs": dict(net_arch=[256, 256]),
-    },
-    "ppo_tuned": {
-        "learning_rate": 1e-4,
-        "n_steps": 4096,
-        "batch_size": 128,
-        "n_epochs": 15,
-        "gamma": 0.995,
-        "gae_lambda": 0.92,
-        "clip_range": 0.25,
-        "ent_coef": 0.001,
-        "max_grad_norm": 0.8,
+        "ent_coef": 0.005,
+        "max_grad_norm": 0.5,
         "policy_kwargs": dict(net_arch=[256, 256], activation_fn=nn.ReLU),
     },
-    "a2c_default": {
-        "learning_rate": 7e-4,
-        "n_steps": 5,
+    "a2c_final": {
+        "learning_rate": 3e-4,
+        "n_steps": 10,
         "gamma": 0.99,
+        "gae_lambda": 0.9,
+        "vf_coef": 0.5,
+        "max_grad_norm": 0.5,
         "ent_coef": 0.01,
-        "policy_kwargs": dict(net_arch=[256, 256]),
+        "policy_kwargs": dict(net_arch=[256, 256], activation_fn=nn.ReLU),
     },
-    "reinforce": {            # A2C without baseline (REINFORCE)
-        "learning_rate": 7e-4,
-        "n_steps": 5,
+    "reinforce_final": {            # A2C without baseline (REINFORCE)
+        "learning_rate": 1e-4,
+        "n_steps": 1,
         "gamma": 0.99,
-        "ent_coef": 0.01,
-        "policy_kwargs": dict(net_arch=[256, 256]),
+        "ent_coef": 0.02,
+        "policy_kwargs": dict(net_arch=[256, 256], activation_fn=nn.ReLU),
         "use_sde": False,     # turn off baseline
     },
 }
 
-# 3.  Training manager (minimal clone of DQNTrainingManager)
+# 3.  Training manager
 
 class PGTrainingManager:
     def __init__(self, log_dir: str, model_dir: str):

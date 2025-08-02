@@ -55,66 +55,26 @@ class DQNTrainingManager:
         
         # Hyperparameter configurations to test
         self.hyperparameter_configs = {
-            'recovery_config': {
+            'final_config': {
                 'learning_rate': 1e-4,
-                'buffer_size': 100000,
-                'learning_starts': 5000,
+                'buffer_size': 150000,
+                'learning_starts': 8000,
                 'batch_size': 128,
-                'gamma': 0.99,
+                'gamma': 0.995,
                 'train_freq': 4,
                 'gradient_steps': 1,
-                'target_update_interval': 500,
-                'exploration_fraction': 0.5,
+                'target_update_interval': 1000,
+                'exploration_fraction': 0.7,
                 'exploration_initial_eps': 1.0,
                 'exploration_final_eps': 0.05,
                 'max_grad_norm': 10,
-                'policy_kwargs': dict(net_arch=[256, 256, 128]),
-            },
-            'robust_exploration': {
-                'learning_rate': 3e-4,
-                'buffer_size': 200000, # Increased buffer size for better exploration
-                'learning_starts': 10000, # Increased learning starts, more random exploration
-                'batch_size': 128,
-                'gamma': 0.99,
-                'train_freq': 4,
-                'gradient_steps': 1,
-                'target_update_interval': 1000,
-                'exploration_fraction': 0.8, # longer exploration phase
-                'exploration_initial_eps': 1.0,
-                'exploration_final_eps': 0.1, # higher final epsilon for more exploration
-                'max_grad_norm': 10,
-                'policy_kwargs': {
-                    'net_arch': [256, 256, 128], # Deeper network for better representation
-                    'activation_fn': torch.nn.ReLU,
-                    'optimizer_class': torch.optim.AdamW,
-                    'optimizer_kwargs': {'weight_decay': 1e-5},
+                'policy_kwargs': {'net_arch': [256, 256, 128],
+                                  'activation_fn': torch.nn.ReLU,
+                                  'optimizer_class': torch.optim.AdamW,
+                                  'optimizer_kwargs': {'weight_decay': 1e-5}
                 },
             },
-            'prioritized_replay': {
-                'learning_rate': 3e-4,
-                'buffer_size': 200000,
-                'learning_starts': 10000,
-                'batch_size': 128,
-                'gamma': 0.99,
-                'train_freq': 4,
-                'gradient_steps': 1,
-                'target_update_interval': 1000,
-                'exploration_fraction': 0.8,
-                'exploration_initial_eps': 1.0,
-                'exploration_final_eps': 0.1,
-                'max_grad_norm': 10,
-                'policy_kwargs': {
-                    'net_arch': [256, 256, 128],
-                    'activation_fn': torch.nn.ReLU,
-                    'optimizer_class': torch.optim.AdamW,
-                    'optimizer_kwargs': {'weight_decay': 1e-5},
-                },
-                'replay_buffer_class': 'stable_baselines3.dqn.prioritized_replay_buffer.PrioritizedReplayBuffer',
-                'replay_buffer_kwargs': {
-                    'alpha': 0.6,  # Prioritization exponent
-                    'beta': 0.4,   # Importance sampling exponent
-                }
-            }
+         
         }
     
     def create_monitored_env(self, env_id: str = "NairobiCBD-v0", 

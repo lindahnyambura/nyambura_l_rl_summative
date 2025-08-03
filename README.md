@@ -54,16 +54,6 @@ python main.py --demo --duration 30
 ```bash
 python main.py --demo --3d
 ```
-
-### Basic Usage
-
-| Command                                        | Description           |
-|------------------------------------------------|-----------------------|
-| python main.py --train dqn                     | Train DQN agent       |
-| python main.py --eval a2c --model best_a2c.zip | Evaluate saved model  |
-| python main.py --demo --render 3d              | 3D visualization demo |
----
-
 ## Environment Details
 
 * **Action Space**:
